@@ -42,8 +42,8 @@ for i = 1:length(instructions_list)
     Screen('Flip',w);
     pause(1);
     resp = 0;
-    while resp == 0
-        [resp, ~] = check_for_resp([p.resp_keys KbName('3#') KbName('4$')], p.esc_key);
+   while resp == 0
+        [resp, ~] = check_for_resp([p.space p.resp_keys], p.esc_key);
     end
     resp = 0;
 end

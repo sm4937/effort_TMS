@@ -3,6 +3,7 @@
 % 8/29/2018 - TCS & GH, adapted from MR code
 % 01/05/2020 - SM - co-opted code structure from distractor task to make
 % eowm version 1
+% 03/01/2024 - SM - adapted task again to make it compatible with TMS!
 %
 % 
 % TIMING INFO:
@@ -19,28 +20,39 @@
 % 6. Post-feedback
 % 7. ITI
 
-function run_task(subj,run,scanner,session)
+function run_task(subj,run,TMS,session)
 
 %try
 p.expt_name = 'effort_TMS';
 
 % turn on/off eyetracking and scanning stuff
-p.do_et = 0;
-p.scanner = scanner;
+p.do_et = false;
+p.scanner = false;
+p.TMS = TMS;
 p.TR = 3; % 4x multiband, so measured TR is 0.75, but "TR" for stim is 3
+if p.TMS
+    addpath(genpath('/usr/share/psychtoolbox-3'))
+else
+    addpath(genpath('/Applications/Psychtoolbox'))
+end
 
 % SESSION NUMBER 0 IS THE TRAINING AND STAIRCASING SESSION
 p.session = session;
 p.subj = subj;
 p.run = run;
-p.total_runs = 8; % the number of runs per session to set up
-% set up subject directories
-if ~exist(['./data/subj' num2str(subj)],'dir')
-    mkdir(['./data/subj' num2str(subj)]);
-    mkdir(['./data/subj' num2str(subj) '/eyetracking']);
+p.total_runs_practice = 8;
+p.total_runs = 16; % the number of runs per session to set up
+if p.session == 0
+    p.total_runs = 8;
 end
 
-p.filename = ['data/subj' num2str(p.subj) '/' p.expt_name '_subj' num2str(p.subj) '_run' num2str(p.run) '_sess' num2str(p.session) '_date' datestr(now,30)];
+% set up subject directories
+if ~exist(['../data/subj' num2str(subj)],'dir')
+    mkdir(['../data/subj' num2str(subj)]);
+    mkdir(['../data/subj' num2str(subj) '/eyetracking']);
+end
+
+p.filename = ['../data/subj' num2str(p.subj) '/' p.expt_name '_subj' num2str(p.subj) '_run' num2str(p.run) '_sess' num2str(p.session) '_date' datestr(now,30)];
 if p.do_et == 1
     p.eyedatafile = ['s' num2str(subj) 'r' num2str(run)];
 end
@@ -120,7 +132,7 @@ p.rnd_idx = randperm(p.ntrials.*p.total_runs);
 p.conditions_all = p.conditions_all(p.rnd_idx,:);
 p.wm_ang_all = wm_ang_all(p.rnd_idx,:);
 
-p.catch = false(length(p.conditions_all),1);
+p.catches_all = false(length(p.conditions_all),1);
 if p.session > 0
     catches = zeros(p.ntrials,1);
     catches(1:5:end) = 1;
@@ -184,6 +196,14 @@ p.behind_by = nan(p.ntrials,1); % keep track of timing errors, they should be ba
 % ------- keyboard stuff --------------------------- %
 if ismac == 1
     p.esc_key = KbName('escape'); % press this key to abort
+    p.start_key = [KbName('5%') KbName('5')];  % should be lower-case t at prisma? (or %5, which is top-row 5, or 5, which is numpad 5)
+    p.space = KbName('space');
+    p.resp_keys = [KbName('1!') KbName('2@')]; % LEFT, RIGHT
+elseif p.TMS
+    p.esc_key = KbName('ESCAPE');
+    p.start_key = KbName('space');  % should be lower-case t at prisma? (or %5, which is top-row 5, or 5, which is numpad 5)
+    p.space = KbName('space');
+    p.resp_keys = [KbName('1') KbName('2')]; % LEFT, RIGHT
 else
     try
         p.esc_key = KbName('esc');
@@ -191,9 +211,7 @@ else
         p.esc_key = KbName('escape');
     end
 end
-p.start_key = [KbName('5%') KbName('5')];  % should be lower-case t at prisma? (or %5, which is top-row 5, or 5, which is numpad 5)
-p.space = KbName('space');
-p.resp_keys = [('3#') KbName('4$')]; % LEFT, RIGHT
+
 
 % ------- Screen setup, optics --------- %
 
@@ -226,7 +244,7 @@ p.ppd = p.resolution(2)/p.screen_height_deg;  % used to convert rects, positions
 
 p.center = p.resolution/2;  % could do offset centers, etc?
 % % PTB SCREEN OPENED HERE % %
-%[windowPtr,rect]=Screen(‘OpenWindow’,windowPtrOrScreenNumber [,color] [,rect][,pixelSize][,numberOfBuffers][,stereomode][,multisample][,imagingmode][,specialFlags][,clientRect][,fbOverrideRect][,vrrParams=[]]);[windowPtr,rect]=Screen(‘OpenWindow’,windowPtrOrScreenNumber [,color] [,rect][,pixelSize][,numberOfBuffers][,stereomode][,multisample][,imagingmode][,specialFlags][,clientRect][,fbOverrideRect][,vrrParams=[]]);
+%[windowPtr,rect]=Screen(ï¿½OpenWindowï¿½,windowPtrOrScreenNumber [,color] [,rect][,pixelSize][,numberOfBuffers][,stereomode][,multisample][,imagingmode][,specialFlags][,clientRect][,fbOverrideRect][,vrrParams=[]]);[windowPtr,rect]=Screen(ï¿½OpenWindowï¿½,windowPtrOrScreenNumber [,color] [,rect][,pixelSize][,numberOfBuffers][,stereomode][,multisample][,imagingmode][,specialFlags][,clientRect][,fbOverrideRect][,vrrParams=[]]);
 if subj ~= 99 %not debugging
     [w, p.scr_rect] = Screen('OpenWindow',max(Screen('Screens')),[0 0 0]); HideCursor;
 elseif subj == 99 %want small screen for debugging
@@ -292,15 +310,15 @@ if run == 0 %if 1st run, display instructions first
     if p.session > 0
         % PULL FROM SESSION 0 HERE!
         try
-            filename = [p.expt_name '_subj' num2str(p.subj) '_run' num2str(p.total_runs) '_sess' num2str(0)];
-            folder = ls(['data/subj' num2str(p.subj)]);
+            filename = [p.expt_name '_subj' num2str(p.subj) '_run' num2str(p.total_runs_practice) '_sess' num2str(0)];
+            folder = ls(['../data/subj' num2str(p.subj)]);
             specific_filename = folder(contains(string(folder),filename),:);
-            old_p = load(['data/subj' num2str(subj) '/' specific_filename]);
+            old_p = load(['../data/subj' num2str(subj) '/' specific_filename]);
             old_p = old_p.p;
         catch % more or fewer runs collected in training than 8!
             % load up which run was collected last (highest run number...)
             
-            folder = ls(['data/subj' num2str(p.subj)]);
+            folder = ls(['../data/subj' num2str(p.subj)]);
             subj_filenames = folder(contains(string(folder),[p.expt_name '_subj' num2str(p.subj) '_run']),:);
             pat = '_run(\w*)_';
             
@@ -312,7 +330,7 @@ if run == 0 %if 1st run, display instructions first
             filename = [p.expt_name '_subj' num2str(p.subj) '_run' num2str(end_run) '_sess' num2str(0)];
             specific_filename = folder(contains(string(folder),filename),:);
             
-            old_p = load(['data/subj' num2str(subj) '/' specific_filename]);
+            old_p = load(['../data/subj' num2str(subj) '/' specific_filename]);
             old_p = old_p.p;
         end
         
@@ -325,9 +343,10 @@ else %1st run already ran
     % load up old information about correctness, deltas, conditions
     
     filename = [p.expt_name '_subj' num2str(p.subj) '_run' num2str(p.run-1) '_sess' num2str(p.session)];
-    folder = ls(['data/subj' num2str(p.subj)]);
-    specific_filename = folder(contains(string(folder),filename),:);
-    old_p = load(['data/subj' num2str(subj) '/' specific_filename]); old_p = old_p.p;
+    folder = dir(['../data/subj' num2str(p.subj)]);
+    contents = char(folder.name);
+    specific_filename = contents(contains(string(contents),filename),:);
+    old_p = load(['../data/subj' num2str(subj) '/' specific_filename]); old_p = old_p.p;
     p.correct = old_p.correct; 
     p.conditions_all = old_p.conditions_all; %keep list of previous behavior, etc.
     p.deltas_all = old_p.deltas_all; %keep deltas which came out of staircasing/training session
@@ -340,11 +359,11 @@ end
 
 run_index = repmat(0:p.total_runs-1,p.ntrials,1);
 run_index = run_index(:);
-p.conditions = p.conditions_all(run_index,:);
-p.catches = p.catches_all(run_index,:);
-p.wm_ang = p.wm_ang_all(run_index,:);
+p.conditions = p.conditions_all(run_index==p.run,:);
+p.catches = p.catches_all(run_index==p.run,:);
+p.wm_ang = p.wm_ang_all(run_index==p.run,:);
 p.wm_coords = p.wm_ecc .* [cosd(p.wm_ang) sind(p.wm_ang)];
-p.itis = p.itis_all(run_index,:);
+p.itis = p.itis_all(run_index==p.run,:);
 
 % draw up a message about which color is which difficulty level
 cond_colors = p.cue_colors(1,1)>0; %magenta is first color, cyan second color
@@ -425,6 +444,7 @@ for tt = 1:p.ntrials
     if p.catches(tt)
         % the delta is now the MIDDLE delta (not hard, not easy!)
         delta = nanmean(p.deltas_all(end,:));
+        disp('CATCH TRIAL')
     end
     
     p.test_ang(tt,:) = p.wm_ang(tt,:)+(delta*sign); %move - for clockwise, + for counterclockwise
@@ -596,8 +616,7 @@ for tt = 1:p.ntrials
         end
         p.resp(tt) = sum(find(p.resp_keys==resp)); %0 for non-response, 1 for 1 key, etc.
     end
-    p.resp(tt)
-    p.conditions(tt,2)
+    
     % feedback (XDAT 5, tarx, tary) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     
     if p.do_et == 1
@@ -725,21 +744,22 @@ for tt = 1:p.ntrials
     p.trial_end(tt) = GetSecs;
     % figure out staircase for next trial
     % DO STAIRCASING!
-    p.correct(tt,run+1) = p.resp(tt)==p.conditions(tt,2); %did they press 1 or 2?
+    p.correct(tt,p.run+1) = p.resp(tt)==p.conditions(tt,2); %did they press 1 or 2?
     p.acc = nanmean(p.correct(:));
-    p.accuracy_run(run+1) = nanmean(p.correct(:,run+1));
+    p.accuracy_run(p.run+1) = nanmean(p.correct(:,p.run+1));
     
     %% RUN STAIRCASE PROCEDURE DURING TRAINING SESSION! ONLY!
     
     if p.session == 0 
         
         relevant_correct = p.correct(:);
-        relevant_correct = relevant_correct(p.all_conditions(:,1)==p.conditions(tt,1));
+        true_trial_number = tt+(p.run.*p.ntrials);
+        relevant_correct = relevant_correct(p.conditions_all(1:true_trial_number,1)==p.conditions(tt,1));
         new_deltas = p.deltas_all(end,:);
         new_deltas(p.conditions(tt,1)) = run_staircase(relevant_correct,p.target_accuracy(p.conditions(tt,1)),p.deltas_all(end,p.conditions(tt,1)));
         p.deltas_all(end+1,:) = new_deltas;
         %staircase result
-        
+
     end
     
 end % end of trial loop
@@ -782,7 +802,7 @@ if p.do_et == 1
     Eyelink('ReceiveFile',[p.eyedatafile '.edf'],[p.eyedatafile '.edf']);
     p.eyedatafile_renamed = [p.filename '.edf'];
     copyfile([p.eyedatafile '.edf'],p.eyedatafile_renamed);
-    movefile(p.eyedatafile_renamed,['data/subj' num2str(subj) '/eyetracking/'])
+    movefile(p.eyedatafile_renamed,['../data/subj' num2str(subj) '/eyetracking/'])
     
     Eyelink('ShutDown');
 end
