@@ -26,7 +26,7 @@ function run_task(subj,run,TMS,session)
 p.expt_name = 'effort_TMS';
 
 % turn on/off eyetracking and scanning stuff
-p.do_et = false;
+p.do_et = 1;
 p.scanner = false;
 p.TMS = TMS;
 p.TR = 3; % 4x multiband, so measured TR is 0.75, but "TR" for stim is 3
@@ -35,6 +35,7 @@ if p.TMS
 else
     addpath(genpath('/Applications/Psychtoolbox'))
 end
+
 
 % SESSION NUMBER 0 IS THE TRAINING AND STAIRCASING SESSION
 p.session = session;
@@ -149,19 +150,20 @@ end
 % locked to TR
  
 % THINGS THAT HAPPEN BEFORE DELAY
-p.cue_dur  = 1.0; % pre-cue: whether it's a hard or easy trial
+p.cue_dur  = 1.01; % pre-cue: whether it's a hard or easy trial
 p.targ_dur = 0.5; % WM target (every trial)
 
 % Standardize delay to be always 3 seconds
 p.delay_dur = 3;
+p.TMS_time = 1.5;
  
 % THINGS THAT HAPPEN AFTER DELAY (end of delay also locked to TR)
 p.resp_dur = 0.8; % response period (time to make left/right response)
 p.feedback_dur = 1.0; % feedback stimulus presentation- location of original stimulus in red/green 
-p.post_feedback_dur = 0; %in seconds, the ITI
+p.post_feedback_dur = 0.5; %in seconds, the ITI
 
 % ITIs are either 1 second or 2 seconds
-p.itis_all = [ones(length(p.conditions_all)./2,1); 2.*ones(length(p.conditions_all)./2,1)];
+p.itis_all = [ones(length(p.conditions_all)./2,1); 2.*ones(length(p.conditions_all)./2,1)]+0.01;
 p.itis_all = p.itis_all(p.rnd_idx,:);     
 
 % -------- timing of experiment events ------- %
@@ -174,8 +176,8 @@ p.itis_all = p.itis_all(p.rnd_idx,:);
 % 
 % p.exp_dur = p.start_wait + p.end_wait + sum(p.trial_dur);
 
-p.start_wait = 0;
-p.end_wait = 2;
+p.start_wait = 0.5;
+p.end_wait = 0.5;
 
 p.trial_dur = p.cue_dur + p.targ_dur + p.delay_dur + ...
               p.resp_dur + p.feedback_dur + p.post_feedback_dur + p.itis_all;
@@ -186,6 +188,7 @@ p.exp_dur = p.start_wait + p.end_wait + sum(p.trial_dur);
 p.trial_start = nan(p.ntrials,1);
 p.targ_start  = nan(p.ntrials,1);
 p.delay_start = nan(p.ntrials,1);
+p.TMS_start = nan(p.ntrials,1);
 p.test_start   = nan(p.ntrials,1);
 p.feedback_start = nan(p.ntrials,1);
 p.iti_start   = nan(p.ntrials,1);
@@ -283,7 +286,7 @@ if p.do_et == 1
     
     Eyelink('Initialize','PsychEyelinkDispatchCallback') % initialises the eyetracker
    % SCANNER: right eye!!!!!!
-    Eyelink('command','calibration_type=HV13'); % updating number of callibration dots
+    Eyelink('command','calibration_type=HV5'); % updating number of callibration dots
     s=Eyelink('command','link_sample_data = LEFT,RIGHT,GAZE,AREA');% (,GAZERES,HREF,PUPIL,STATUS,INPUT');
     s=Eyelink('command', 'sample_rate = 500');
     s=Eyelink('command','screen_pixel_coords = %ld %ld %ld %ld', 0, 0, p.scr_rect(3)-1,p.scr_rect(4)-1);
@@ -310,7 +313,7 @@ if run == 0 %if 1st run, display instructions first
     if p.session > 0
         % PULL FROM SESSION 0 HERE!
         try
-            filename = [p.expt_name '_subj' num2str(p.subj) '_run' num2str(p.total_runs_practice) '_sess' num2str(0)];
+            filename = [p.expt_name '_subj' num2str(p.subj) '_run' num2str(p.total_runs_practice-1) '_sess' num2str(0)];
             folder = ls(['../data/subj' num2str(p.subj)]);
             specific_filename = folder(contains(string(folder),filename),:);
             old_p = load(['../data/subj' num2str(subj) '/' specific_filename]);
@@ -318,14 +321,19 @@ if run == 0 %if 1st run, display instructions first
         catch % more or fewer runs collected in training than 8!
             % load up which run was collected last (highest run number...)
             
-            folder = ls(['../data/subj' num2str(p.subj)]);
+            folder = dir(['../data/subj' num2str(p.subj)]);
+            folder = char(folder.name);
             subj_filenames = folder(contains(string(folder),[p.expt_name '_subj' num2str(p.subj) '_run']),:);
             pat = '_run(\w*)_';
             
-            for ii = 1:length(subj_filenames)
-                run_numbers(ii) = regexp(subj_filenames{ii},pat,'tokens');
+            current_max = NaN;
+            for ii = 1:size(subj_filenames,1)
+                run_numbers(ii) = regexp(subj_filenames(ii,:),pat,'tokens');
+                number = strsplit(run_numbers{ii}{1},'_');
+                number = str2num(number{1});
+                current_max = max([number current_max]);
             end
-            end_run = max(run_numbers);
+            end_run = current_max;
             
             filename = [p.expt_name '_subj' num2str(p.subj) '_run' num2str(end_run) '_sess' num2str(0)];
             specific_filename = folder(contains(string(folder),filename),:);
@@ -540,15 +548,15 @@ for tt = 1:p.ntrials
         
     end
     
-    % Delay 1 (XDAT 3) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    % Delay Period (send XDAT 3) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     
     
     if p.do_et == 1
         Eyelink('Message','xDAT %i',3);    
     end
     
-    
-    while GetSecs < trial_start + p.cue_dur + p.targ_dur + p.delay_dur
+    % DELAY PERIOD PRE-TMS
+    while GetSecs < trial_start + p.cue_dur + p.targ_dur + p.TMS_time
         
         % draw aperture
         Screen('FillRect',w,[0 0 0]);
@@ -575,9 +583,45 @@ for tt = 1:p.ntrials
         end
         
     end
-    clear resp_start_time;
     
-    % Response, display second stimulus(XDAT 4) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    % DELAY PERIOD POST-TMS
+    while GetSecs < trial_start + p.cue_dur + p.targ_dur + p.delay_dur
+        
+        % draw aperture
+        Screen('FillRect',w,[0 0 0]);
+        draw_aperture();
+        
+        % fixation
+        draw_fixation(p,w);
+        Screen('Flip',w);
+        
+        % % % DELIVER TMS % % %
+        
+        if isnan(p.TMS_start(tt)) % only do this once
+            p.TMS_start(tt) = GetSecs;
+        end
+        
+        
+        
+        
+        % % % % % % % % % % % %
+        
+        % check for esc....
+        [resp] = check_for_resp([], p.esc_key); % TODO: maybe turn on/off gaze indicator?
+        if resp == -1
+            Screen('CloseAll'); ShowCursor; ListenChar(1);
+            if p.do_et == 1
+                Eyelink('StopRecording');
+                Eyelink('ShutDown');
+            end
+            save(p.filename,'p');
+            return;
+        end
+        
+    end
+    clear resp_start_time;
+        
+    % Response period (variable length) (XDAT 4) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if p.do_et == 1
         Eyelink('Message','TestX %s', num2str(p.test_coords(tt,1)));
         Eyelink('Message','TestY %s', num2str(p.test_coords(tt,2)));

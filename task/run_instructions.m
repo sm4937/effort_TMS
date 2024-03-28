@@ -40,7 +40,7 @@ for i = 1:length(instructions_list)
     Screen('FillRect',w,[0 0 0]);
     DrawFormattedText(w,instructions,'center','center',p.fix_color,[],[],[],1.5);
     Screen('Flip',w);
-    pause(1);
+    pause(0.75);
     resp = 0;
    while resp == 0
         [resp, ~] = check_for_resp([p.space p.resp_keys], p.esc_key);
